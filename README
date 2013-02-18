@@ -1,1 +1,4 @@
 TODO
+
+These examples are written in C++11. In order to compile the code, you
+need a relatively recent version of GCC which supports C++11.
