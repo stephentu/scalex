@@ -140,6 +140,23 @@ public:
     *pp = n;
   }
 
+  inline void
+  remove(const T &val)
+  {
+    scoped_lock l(mutex_);
+    node_ptr p = head_, *pp = &head_;
+    while (p) {
+      if (p->value_ == val) {
+        // unlink
+        *pp = p->next_;
+        p = *pp;
+      } else {
+        pp = &p->next_;
+        p = p->next_;
+      }
+    }
+  }
+
   iterator
   begin()
   {

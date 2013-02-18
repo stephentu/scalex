@@ -24,5 +24,19 @@ main(int argc, char **argv)
   assert(l.front() == 2);
   l.pop_front();
   assert(l.empty());
+
+  l.push_back(10);
+  l.push_back(10);
+  l.push_back(20);
+  l.push_back(30);
+  l.push_back(50);
+  l.push_back(10);
+  for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it)
+    cout << *it << endl;
+  l.remove(10);
+  cout << "---" << endl;
+  for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it)
+    cout << *it << endl;
+
   return 0;
 }

@@ -54,6 +54,12 @@ public:
     impl_.push_back(val);
   }
 
+  inline void
+  remove(const value_type &val)
+  {
+    impl_.remove(val);
+  }
+
   inline iterator
   begin()
   {
