@@ -2,7 +2,8 @@ CXXFLAGS := -Wall -Werror -g --std=c++0x
 LDFLAGS := -lpthread -lrt
 
 HEADERS = linked_list.hpp \
-	  global_lock_impl.hpp
+	  global_lock_impl.hpp \
+	  per_node_lock_impl.hpp
 SRCFILES = 
 OBJFILES = $(SRCFILES:.cpp=.o)
 

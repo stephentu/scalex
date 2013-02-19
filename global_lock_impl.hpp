@@ -16,8 +16,8 @@ class global_lock_impl {
 private:
 
   struct node;
-  typedef std::lock_guard<std::mutex> scoped_lock;
-  typedef std::shared_ptr<scoped_lock> scoped_lock_ptr;
+  typedef std::unique_lock<std::mutex> unique_lock;
+  typedef std::shared_ptr<unique_lock> unique_lock_ptr;
   typedef std::shared_ptr<node> node_ptr;
 
   struct node {
@@ -39,7 +39,7 @@ private:
 
   struct iterator_ {
     iterator_() : lock_(), node_() {}
-    iterator_(const scoped_lock_ptr &lock, const node_ptr &node)
+    iterator_(const unique_lock_ptr &lock, const node_ptr &node)
       : lock_(lock), node_(node) {}
 
     T &
@@ -81,7 +81,7 @@ private:
       return cur;
     }
 
-    scoped_lock_ptr lock_;
+    unique_lock_ptr lock_;
     node_ptr node_;
   };
 
@@ -94,7 +94,7 @@ public:
   size_t
   size() const
   {
-    scoped_lock l(mutex_);
+    unique_lock l(mutex_);
     size_t ret = 0;
     node_ptr cur = head_;
     while (cur) {
@@ -107,7 +107,7 @@ public:
   inline T &
   front()
   {
-    scoped_lock l(mutex_);
+    unique_lock l(mutex_);
     assert(head_);
     return head_->value_;
   }
@@ -115,7 +115,7 @@ public:
   inline const T &
   front() const
   {
-    scoped_lock l(mutex_);
+    unique_lock l(mutex_);
     assert(head_);
     return head_->value_;
   }
@@ -123,7 +123,7 @@ public:
   void
   pop_front()
   {
-    scoped_lock l(mutex_);
+    unique_lock l(mutex_);
     assert(head_);
     node_ptr next = head_->next_;
     head_ = next;
@@ -132,7 +132,7 @@ public:
   void
   push_back(const T &val)
   {
-    scoped_lock l(mutex_);
+    unique_lock l(mutex_);
     node_ptr p = head_, *pp = &head_;
     for (; p; pp = &p->next_, p = p->next_)
       ;
@@ -143,7 +143,7 @@ public:
   inline void
   remove(const T &val)
   {
-    scoped_lock l(mutex_);
+    unique_lock l(mutex_);
     node_ptr p = head_, *pp = &head_;
     while (p) {
       if (p->value_ == val) {
@@ -160,13 +160,13 @@ public:
   iterator
   begin()
   {
-    scoped_lock_ptr l(new scoped_lock(mutex_));
+    unique_lock_ptr l(new unique_lock(mutex_));
     return iterator_(l, head_);
   }
 
   iterator
   end()
   {
-    return iterator_(scoped_lock_ptr(), node_ptr());
+    return iterator_(unique_lock_ptr(), node_ptr());
   }
 };

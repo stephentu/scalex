@@ -3,6 +3,7 @@
 
 #include "linked_list.hpp"
 #include "global_lock_impl.hpp"
+#include "per_node_lock_impl.hpp"
 
 using namespace std;
 
@@ -10,7 +11,8 @@ int
 main(int argc, char **argv)
 {
   typedef
-    linked_list<int, global_lock_impl<int>>
+    //linked_list<int, global_lock_impl<int>>
+    linked_list<int, per_node_lock_impl<int>>
     gl_linked_list;
 
   gl_linked_list l;
@@ -33,10 +35,13 @@ main(int argc, char **argv)
   l.push_back(10);
   for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it)
     cout << *it << endl;
+
   l.remove(10);
   cout << "---" << endl;
-  for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it)
+  for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it) {
     cout << *it << endl;
+    assert(*it != 10);
+  }
 
   return 0;
 }
