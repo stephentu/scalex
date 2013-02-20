@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <initializer_list>
 
 #include "linked_list.hpp"
 #include "global_lock_impl.hpp"
@@ -17,14 +18,14 @@ class foo : public atomic_ref_counted {
 public:
   ~foo()
   {
-    cout << "deleted" << endl;
     deleted = true;
   }
 };
 
-int
-main(int argc, char **argv)
+static void
+atomic_ref_ptr_tests()
 {
+  deleted = false;
   {
     atomic_ref_ptr<foo> p(new foo);
     assert(!p.get_mark());
@@ -45,21 +46,41 @@ main(int argc, char **argv)
     p = atomic_ref_ptr<foo>();
   }
   assert(deleted);
+}
 
-  typedef
-    //linked_list<int, global_lock_impl<int>>
-    //linked_list<int, per_node_lock_impl<int>>
-    //linked_list<int, lock_free_impl<int>>
-    linked_list<int, lock_free_impl<int, nop_ref_counted, scoped_rcu_region>>
-    gl_linked_list;
+template <typename IterA, typename IterB>
+static void
+AssertEqualRanges(IterA begin_a, IterA end_a, IterB begin_b, IterB end_b)
+{
+  while (begin_a != end_a && begin_b != end_b) {
+    assert(*begin_a == *begin_b);
+    ++begin_a; ++begin_b;
+  }
+  assert(begin_a == end_a);
+  assert(begin_b == end_b);
+}
 
-  gl_linked_list l;
+template <typename Iter>
+static void
+AssertEqual(Iter begin, Iter end, initializer_list<typename Iter::value_type> list)
+{
+  AssertEqualRanges(begin, end, list.begin(), list.end());
+}
+
+template <typename Impl>
+static void
+single_threaded_tests()
+{
+  typedef linked_list<int, Impl> llist;
+
+  llist l;
   l.push_back(1);
   assert(l.front() == 1);
   l.push_back(2);
   assert(l.front() == 1);
-  for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it)
-    cout << *it << endl;
+
+  AssertEqual(l.begin(), l.end(), {1, 2});
+
   l.pop_front();
   assert(l.front() == 2);
   l.pop_front();
@@ -71,15 +92,30 @@ main(int argc, char **argv)
   l.push_back(30);
   l.push_back(50);
   l.push_back(10);
-  for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it)
-    cout << *it << endl;
+  AssertEqual(l.begin(), l.end(), {10, 10, 20, 30, 50, 10});
 
   l.remove(10);
-  cout << "---" << endl;
-  for (gl_linked_list::iterator it = l.begin(); it != l.end(); ++it) {
-    cout << *it << endl;
+  for (typename llist::iterator it = l.begin(); it != l.end(); ++it) {
     assert(*it != 10);
   }
+  AssertEqual(l.begin(), l.end(), {20, 30, 50});
+}
 
+template <typename Function>
+static void
+ExecTest(Function &&f, const string &name)
+{
+  f();
+  cout << "Test " << name << " passed" << endl;
+}
+
+int
+main(int argc, char **argv)
+{
+  ExecTest(atomic_ref_ptr_tests, "atomic_ref_ptr");
+  ExecTest(single_threaded_tests<global_lock_impl<int>>, "global_lock");
+  ExecTest(single_threaded_tests<per_node_lock_impl<int>>, "per_node_locks");
+  ExecTest(single_threaded_tests<lock_free_impl<int>>, "lock_free");
+  ExecTest(single_threaded_tests<lock_free_impl<int, nop_ref_counted, scoped_rcu_region>>, "lock_free_rcu");
   return 0;
 }

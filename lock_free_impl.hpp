@@ -62,6 +62,8 @@ private:
     iterator_(const node_ptr &node)
       : node_(node), scoper_() {}
 
+    typedef T value_type;
+
     T &
     operator*() const
     {
@@ -114,6 +116,18 @@ public:
   typedef iterator_ iterator;
 
   lock_free_impl() : head_(new node) {}
+  ~lock_free_impl()
+  {
+    ScopedImpl scoper;
+    // can do this non-thread safe, since we know there are
+    // no other mutators
+    node_ptr cur = head_;
+    while (cur) {
+      if (cur->next_.mark())
+        scoper.release(cur.get());
+      cur = cur->next_;
+    }
+  }
 
   size_t
   size() const
@@ -182,6 +196,7 @@ public:
     // sentinel node will never be deleted (that is, the first node of a list
     // will ALWAYS be the first node until it is deleted)
     prev->next_ = cur->next_; // semantics of assign() do not copy marked bits
+    assert(cur->is_marked());
     scoper.release(cur.get());
   }
 
@@ -212,6 +227,7 @@ public:
           // try to unlink- ignore success value
           if (pp->compare_exchange_strong(p, p->next_)) {
             // successful unlink, report
+            assert(p->is_marked());
             scoper.release(p.get());
           }
         }

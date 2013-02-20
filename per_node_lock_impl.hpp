@@ -58,6 +58,8 @@ private:
     iterator_(const unique_lock_ptr &lock, const node_ptr &node)
       : lock_(lock), node_(node) {}
 
+    typedef T value_type;
+
     T &
     operator*() const
     {

@@ -94,10 +94,17 @@ public:
     rcu::region_begin();
   }
 
+  inline scoped_rcu_region(const scoped_rcu_region &that)
+  {
+    rcu::region_begin();
+  }
+
   inline ~scoped_rcu_region()
   {
     rcu::region_end();
   }
+
+  // don't need operator=()
 
   template <typename T>
   inline void
