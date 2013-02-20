@@ -3,7 +3,7 @@
 #include <atomic>
 #include "asm.hpp"
 
-// implements BasicLockable concept (C++11)
+// implements Lockable concept (C++11)
 class spinlock {
 public:
   spinlock() : flag_(false) {}
@@ -24,6 +24,12 @@ public:
   unlock()
   {
     flag_.store(false, std::memory_order_release);
+  }
+
+  inline bool
+  try_lock()
+  {
+    return !flag_.exchange(true, std::memory_order_acquire);
   }
 
 private:

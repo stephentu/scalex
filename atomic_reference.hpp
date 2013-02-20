@@ -100,7 +100,7 @@ class atomic_ref_ptr : public private_::ptr_ops_mixin<T> {
 
 public:
   // nullptr constructor
-  atomic_ref_ptr() : ptr_(opaque_t(nullptr)) {}
+  atomic_ref_ptr() : ptr_(opaque_t(nullptr)), mutex_() {}
 
   ~atomic_ref_ptr() {
     T *ptr = get();
@@ -110,7 +110,7 @@ public:
 
   // constructors don't accept a marked ptr
   explicit atomic_ref_ptr(T *ptr)
-    : ptr_(opaque_t(ptr))
+    : ptr_(opaque_t(ptr)), mutex_()
   {
     if (ptr)
       ptr->inc();
@@ -118,7 +118,7 @@ public:
 
   template <typename U>
   explicit atomic_ref_ptr(U *ptr)
-    : ptr_(opaque_t(static_cast<T *>(ptr)))
+    : ptr_(opaque_t(static_cast<T *>(ptr))), mutex_()
   {
     if (ptr)
       ptr->inc();
@@ -128,20 +128,17 @@ public:
   //
   // NOTE: Copy assignments don't propagate the marks
   //
-  // NOTE: Assignments assume that the input is stable, but this reference
-  // might be concurrently mutated
-  //
   // NOTE: Assigning to a reference preserves its current mark
 
   atomic_ref_ptr(const atomic_ref_ptr &other)
-    : ptr_(opaque_t(nullptr))
+    : ptr_(opaque_t(nullptr)), mutex_()
   {
     assignFrom(other);
   }
 
   template <typename U>
   atomic_ref_ptr(const atomic_ref_ptr<U> &other)
-    : ptr_(opaque_t(other.get()))
+    : ptr_(opaque_t(other.get())), mutex_()
   {
     assignFrom(other);
   }
@@ -219,16 +216,20 @@ public:
       nop_pause();
       goto retry;
     }
+    assert(get_mark());
     return true;
   }
 
-  // expected_value assumed to be stable
-  // (desired_value is stable by default because it is pass by value)
+  // desired_value is stable by default because it is pass by value, so we
+  // don't need to lock it
   inline bool
   compare_exchange_strong(
       const atomic_ref_ptr &expected_value,
       atomic_ref_ptr desired_value)
   {
+    std::lock(mutex_, expected_value.mutex_);
+    std::lock_guard<spinlock> l0(mutex_, std::adopt_lock);
+    std::lock_guard<spinlock> l1(expected_value.mutex_, std::adopt_lock);
     opaque_t expected_opaque = expected_value.ptr_.load(); // assume stable
     opaque_t desired_opaque = desired_value.ptr_.load();
     if (!ptr_.compare_exchange_strong(expected_opaque, desired_opaque))
@@ -252,14 +253,19 @@ private:
   assignFrom(const atomic_ref_ptr<U> &other)
   {
   retry:
+    std::lock(mutex_, other.mutex_);
+    std::lock_guard<spinlock> l0(mutex_, std::adopt_lock);
+    std::lock_guard<spinlock> l1(other.mutex_, std::adopt_lock);
+
     opaque_t this_opaque = get_raw();
     T *this_ptr = this->Ptr(this_opaque);
-    T *that_ptr = other.get(); // assume stable
+    T *that_ptr = other.get();
     if (this_ptr == that_ptr) {
       // self-assignment
       return;
     }
     opaque_t new_opaque = this->BuildOpaque(that_ptr, this_opaque);
+    // could have a concurrent marker
     if (!ptr_.compare_exchange_strong(this_opaque, new_opaque)) {
       nop_pause();
       goto retry;
@@ -277,4 +283,5 @@ private:
   }
 
   std::atomic<opaque_t> ptr_;
+  mutable spinlock mutex_; // guards Ptr(ptr_) from changing (marks can change w/o grabing mutex)
 };

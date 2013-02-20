@@ -49,6 +49,17 @@ atomic_ref_ptr_tests()
     p = atomic_ref_ptr<foo>();
   }
   assert(deleted);
+  deleted = false;
+
+  {
+    atomic_ref_ptr<foo> p0(new foo);
+    atomic_ref_ptr<foo> p1(new foo);
+    p0 = p1;
+    assert(deleted);
+    deleted = false;
+  }
+  assert(deleted);
+  deleted = false;
 }
 
 template <typename IterA, typename IterB>

@@ -2,6 +2,21 @@ CXX := g++-4.7
 CXXFLAGS := -Wall -Werror -g --std=c++0x
 LDFLAGS := -lpthread -lrt
 
+# 0 = libc malloc
+# 1 = jemalloc
+# 2 = tcmalloc
+USE_MALLOC_MODE=2
+
+ifeq ($(USE_MALLOC_MODE),1)
+        CXXFLAGS+=-DUSE_JEMALLOC
+        LDFLAGS+=-ljemalloc
+else
+ifeq ($(USE_MALLOC_MODE),2)
+        CXXFLAGS+=-DUSE_TCMALLOC
+        LDFLAGS+=-ltcmalloc
+endif
+endif
+
 HEADERS = macros.hpp \
 	  spinlock.hpp \
 	  rcu.hpp \
@@ -23,3 +38,7 @@ all: test
 
 test: test.o $(OBJFILES)
 	$(CXX) -o test $^ $(LDFLAGS)
+
+.PHONY: clean
+clean:
+	rm -f test *.o
