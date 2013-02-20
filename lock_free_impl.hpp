@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <memory>
+#include <iterator>
 
 #include "atomic_reference.hpp"
 #include "macros.hpp"
@@ -57,7 +58,7 @@ private:
 
   node_ptr head_; // head_ points to a sentinel beginning node
 
-  struct iterator_ {
+  struct iterator_ : public std::iterator<std::forward_iterator_tag, T> {
     iterator_() : node_(), scoper_() {}
     iterator_(const node_ptr &node)
       : node_(node), scoper_() {}
@@ -204,15 +205,19 @@ public:
   push_back(const T &val)
   {
   retry:
-    ScopedImpl scoper UNUSED;
+    ScopedImpl scoper;
     assert(!head_->is_marked());
     node_ptr p = head_->next_, *pp = &head_->next_;
     for (; p; pp = &p->next_, p = p->next_)
       ;
     node_ptr n(new node(val, node_ptr()));
     assert(!p.get_mark()); // b/c node ptrs don't propagate mark bits
-    if (!pp->compare_exchange_strong(p, n))
+    if (!pp->compare_exchange_strong(p, n)) {
+      bool ret = n->next_.mark(); // be pedantic
+      if (!ret) assert(false);
+      scoper.release(n.get());
       goto retry;
+    }
   }
 
   inline void

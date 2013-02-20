@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <memory>
+#include <iterator>
 
 // toggle between spinlock implementation or std::mutex
 #define USE_SPINLOCK
@@ -53,12 +54,10 @@ private:
 
   node_ptr head_; // head_ points to a sentinel beginning node
 
-  struct iterator_ {
+  struct iterator_ : public std::iterator<std::forward_iterator_tag, T> {
     iterator_() : lock_(), node_() {}
     iterator_(const unique_lock_ptr &lock, const node_ptr &node)
       : lock_(lock), node_(node) {}
-
-    typedef T value_type;
 
     T &
     operator*() const

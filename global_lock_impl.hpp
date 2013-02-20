@@ -3,6 +3,7 @@
 #include <cassert>
 #include <memory>
 #include <mutex>
+#include <iterator>
 
 /**
  * Standard singly-linked list with a global lock for protection, and
@@ -37,12 +38,10 @@ private:
   mutable std::mutex mutex_;
   node_ptr head_;
 
-  struct iterator_ {
+  struct iterator_ : public std::iterator<std::forward_iterator_tag, T> {
     iterator_() : lock_(), node_() {}
     iterator_(const unique_lock_ptr &lock, const node_ptr &node)
       : lock_(lock), node_(node) {}
-
-    typedef T value_type;
 
     T &
     operator*() const

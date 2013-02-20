@@ -1,12 +1,15 @@
 #include <cassert>
 #include <iostream>
 #include <initializer_list>
+#include <vector>
+#include <algorithm>
 
 #include "linked_list.hpp"
 #include "global_lock_impl.hpp"
 #include "per_node_lock_impl.hpp"
 #include "lock_free_impl.hpp"
 
+#include "asm.hpp"
 #include "rcu.hpp"
 #include "atomic_reference.hpp"
 
@@ -105,13 +108,53 @@ single_threaded_tests()
   assert(ret.second == 20);
 }
 
+// there's probably a better way to do this
+static vector<int>
+range(int range_begin, int range_end)
+{
+  assert(range_end >= range_begin); // cant handle this for now
+  vector<int> r;
+  r.reserve(range_end - range_begin);
+  for (int i = range_begin; i < range_end; i++)
+    r.push_back(i);
+  return r;
+}
+
+template <typename Impl>
+static void
+ilist_insert(linked_list<int, Impl> &l, atomic<bool> &f, int range_begin, int range_end)
+{
+  while (!f.load())
+    nop_pause();
+  for (int i = range_begin; i < range_end; i++)
+    l.push_back(i);
+}
+
 template <typename Impl>
 static void
 multi_threaded_tests()
 {
   typedef linked_list<int, Impl> llist;
 
-  llist l;
+  // try a bunch of concurrent inserts, make sure we don't lose
+  // any values!
+  {
+    llist l;
+    const int NElemsPerThread = 500;
+    const int NThreads = 4;
+    vector<thread> thds;
+    atomic<bool> start_flag(false);
+    for (int i = 0; i < NThreads; i++) {
+      thread t(ilist_insert<Impl>, ref(l), ref(start_flag), i * NElemsPerThread, (i + 1) * NElemsPerThread);
+      thds.push_back(move(t));
+    }
+    start_flag.store(true);
+    for (auto &t : thds)
+      t.join();
+    vector<int> ll_elems(l.begin(), l.end());
+    sort(ll_elems.begin(), ll_elems.end());
+    assert(ll_elems == range(0, NThreads * NElemsPerThread));
+  }
 }
 
 template <typename Function>
