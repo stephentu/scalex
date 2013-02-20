@@ -109,13 +109,21 @@ ExecTest(Function &&f, const string &name)
   cout << "Test " << name << " passed" << endl;
 }
 
+template <typename T>
+struct ll_policy {
+  typedef global_lock_impl<T> global_lock;
+  typedef per_node_lock_impl<T> per_node_lock;
+  typedef lock_free_impl<T> lock_free;
+  typedef lock_free_impl<T, nop_ref_counted, scoped_rcu_region> lock_free_rcu;
+};
+
 int
 main(int argc, char **argv)
 {
   ExecTest(atomic_ref_ptr_tests, "atomic_ref_ptr");
-  ExecTest(single_threaded_tests<global_lock_impl<int>>, "global_lock");
-  ExecTest(single_threaded_tests<per_node_lock_impl<int>>, "per_node_locks");
-  ExecTest(single_threaded_tests<lock_free_impl<int>>, "lock_free");
-  ExecTest(single_threaded_tests<lock_free_impl<int, nop_ref_counted, scoped_rcu_region>>, "lock_free_rcu");
+  ExecTest(single_threaded_tests<typename ll_policy<int>::global_lock>, "global_lock");
+  ExecTest(single_threaded_tests<typename ll_policy<int>::per_node_lock>, "per_node_locks");
+  ExecTest(single_threaded_tests<typename ll_policy<int>::lock_free>, "lock_free");
+  ExecTest(single_threaded_tests<typename ll_policy<int>::lock_free_rcu>, "lock_free_rcu");
   return 0;
 }
