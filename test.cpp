@@ -99,6 +99,19 @@ single_threaded_tests()
     assert(*it != 10);
   }
   AssertEqual(l.begin(), l.end(), {20, 30, 50});
+
+  auto ret = l.try_pop_front();
+  assert(ret.first);
+  assert(ret.second == 20);
+}
+
+template <typename Impl>
+static void
+multi_threaded_tests()
+{
+  typedef linked_list<int, Impl> llist;
+
+  llist l;
 }
 
 template <typename Function>
@@ -121,9 +134,15 @@ int
 main(int argc, char **argv)
 {
   ExecTest(atomic_ref_ptr_tests, "atomic_ref_ptr");
-  ExecTest(single_threaded_tests<typename ll_policy<int>::global_lock>, "global_lock");
-  ExecTest(single_threaded_tests<typename ll_policy<int>::per_node_lock>, "per_node_locks");
-  ExecTest(single_threaded_tests<typename ll_policy<int>::lock_free>, "lock_free");
-  ExecTest(single_threaded_tests<typename ll_policy<int>::lock_free_rcu>, "lock_free_rcu");
+
+  ExecTest(single_threaded_tests<typename ll_policy<int>::global_lock>, "single-threaded global_lock");
+  ExecTest(single_threaded_tests<typename ll_policy<int>::per_node_lock>, "single-threaded per_node_locks");
+  ExecTest(single_threaded_tests<typename ll_policy<int>::lock_free>, "single-threaded lock_free");
+  ExecTest(single_threaded_tests<typename ll_policy<int>::lock_free_rcu>, "single-threaded lock_free_rcu");
+
+  ExecTest(multi_threaded_tests<typename ll_policy<int>::global_lock>, "multi-threaded global_lock");
+  ExecTest(multi_threaded_tests<typename ll_policy<int>::per_node_lock>, "multi-threaded per_node_locks");
+  ExecTest(multi_threaded_tests<typename ll_policy<int>::lock_free>, "multi-threaded lock_free");
+  ExecTest(multi_threaded_tests<typename ll_policy<int>::lock_free_rcu>, "multi-threaded lock_free_rcu");
   return 0;
 }

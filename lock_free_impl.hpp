@@ -241,6 +241,29 @@ public:
     }
   }
 
+  std::pair<bool, T>
+  try_pop_front()
+  {
+  retry:
+    ScopedImpl scoper;
+    assert(!head_->is_marked());
+    node_ptr &prev = head_;
+    node_ptr cur = prev->next_;
+    if (!cur)
+      return std::make_pair(false, T());
+
+    if (!cur->next_.mark())
+      // was concurrently deleted
+      goto retry;
+
+    // we are the deleter
+    T t = cur->value_;
+    prev->next_ = cur->next_;
+    assert(cur->is_marked());
+    scoper.release(cur.get());
+    return std::make_pair(true, t);
+  }
+
   iterator
   begin()
   {

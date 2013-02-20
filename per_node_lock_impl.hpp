@@ -205,6 +205,19 @@ public:
     prev->mutex_.unlock();
   }
 
+  std::pair<bool, T>
+  try_pop_front()
+  {
+    unique_lock l(head_->mutex_);
+    node_ptr first = head_->next_;
+    if (!first)
+      return std::make_pair(false, T());
+    unique_lock l0(first->mutex_);
+    T t = first->value_;
+    head_->next_ = first->next_;
+    return std::make_pair(true, t);
+  }
+
   iterator
   begin()
   {

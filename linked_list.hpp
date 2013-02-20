@@ -1,10 +1,16 @@
 #pragma once
 
 #include <cstddef>
+#include <utility>
 
 /**
- * We define a common linked-list interface, to make writing
- * benchmarks easier
+ * We define a common linked-list interface, to make writing benchmarks easier:
+ * this implementation doesn't really do much other than delegate to the
+ * underlying implementation
+ *
+ * We try to use an API similar to a subset of the std::list API, with a
+ * few non-standard functions which make more sense in a multi-threaded
+ * environment.
  */
 template <typename T, typename Impl>
 class linked_list {
@@ -70,6 +76,14 @@ public:
   end()
   {
     return impl_.end();
+  }
+
+  // begin non-standard API
+
+  std::pair<bool, T>
+  try_pop_front()
+  {
+    return impl_.try_pop_front();
   }
 
 private:

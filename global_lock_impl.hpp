@@ -159,6 +159,18 @@ public:
     }
   }
 
+  std::pair<bool, T>
+  try_pop_front()
+  {
+    unique_lock l(mutex_);
+    if (!head_)
+      return std::make_pair(false, T());
+    T t = head_->value_;
+    node_ptr next = head_->next_;
+    head_ = next;
+    return std::make_pair(true, t);
+  }
+
   iterator
   begin()
   {
