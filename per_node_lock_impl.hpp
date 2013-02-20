@@ -2,7 +2,15 @@
 
 #include <cassert>
 #include <memory>
+
+// toggle between spinlock implementation or std::mutex
+#define USE_SPINLOCK
+
+#ifdef USE_SPINLOCK
+#include "spinlock.hpp"
+#else
 #include <mutex>
+#endif
 
 /**
  * Standard singly-linked list with a per-node locks for protection, and
@@ -17,7 +25,14 @@ class per_node_lock_impl {
 private:
 
   struct node;
-  typedef std::unique_lock<std::mutex> unique_lock;
+
+#ifdef USE_SPINLOCK
+  typedef spinlock lock_type;
+#else
+  typedef std::mutex lock_type;
+#endif
+
+  typedef std::unique_lock<lock_type> unique_lock;
   typedef std::shared_ptr<unique_lock> unique_lock_ptr;
   typedef std::shared_ptr<node> node_ptr;
 
@@ -31,7 +46,7 @@ private:
     node(const T &value, const node_ptr &next)
       : value_(value), next_(next) {}
 
-    mutable std::mutex mutex_;
+    mutable lock_type mutex_;
     T value_;
     node_ptr next_;
   };

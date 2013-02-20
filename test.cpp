@@ -4,15 +4,51 @@
 #include "linked_list.hpp"
 #include "global_lock_impl.hpp"
 #include "per_node_lock_impl.hpp"
+#include "lock_free_impl.hpp"
+
+#include "atomic_reference.hpp"
 
 using namespace std;
+
+static bool deleted = false;
+
+class foo : public atomic_ref_counted {
+public:
+  ~foo()
+  {
+    cout << "deleted" << endl;
+    deleted = true;
+  }
+};
 
 int
 main(int argc, char **argv)
 {
+  {
+    atomic_ref_ptr<foo> p(new foo);
+    assert(!p.get_mark());
+  }
+  assert(deleted);
+  deleted = false;
+
+  {
+    atomic_ref_ptr<foo> p(new foo);
+    assert(!p.get_mark());
+    assert(p.mark());
+  }
+  assert(deleted);
+  deleted = false;
+
+  {
+    atomic_ref_ptr<foo> p(new foo);
+    p = atomic_ref_ptr<foo>();
+  }
+  assert(deleted);
+
   typedef
     //linked_list<int, global_lock_impl<int>>
-    linked_list<int, per_node_lock_impl<int>>
+    //linked_list<int, per_node_lock_impl<int>>
+    linked_list<int, lock_free_impl<int>>
     gl_linked_list;
 
   gl_linked_list l;
