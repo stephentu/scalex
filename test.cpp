@@ -132,6 +132,20 @@ ilist_insert(linked_list<int, Impl> &l, atomic<bool> &f, int range_begin, int ra
 
 template <typename Impl>
 static void
+ilist_pop_front(linked_list<int, Impl> &l, atomic<bool> &f, vector<int> &popped)
+{
+  while (!f.load())
+    nop_pause();
+  for (;;) {
+    auto ret = l.try_pop_front();
+    if (!ret.first)
+      break;
+    popped.push_back(ret.second);
+  }
+}
+
+template <typename Impl>
+static void
 multi_threaded_tests()
 {
   typedef linked_list<int, Impl> llist;
@@ -154,6 +168,32 @@ multi_threaded_tests()
     vector<int> ll_elems(l.begin(), l.end());
     sort(ll_elems.begin(), ll_elems.end());
     assert(ll_elems == range(0, NThreads * NElemsPerThread));
+  }
+
+  // try a bunch of concurrent try_pop_fronts, make sure we see every element
+  {
+    llist l;
+    const int NElems = 500;
+    const int NThreads = 4;
+    for (auto e : range(0, NElems))
+      l.push_back(e);
+    vector<thread> thds;
+    vector<vector<int>> results;
+    results.resize(NThreads);
+    atomic<bool> start_flag(false);
+    for (int i = 0; i < NThreads; i++) {
+      thread t(ilist_pop_front<Impl>, ref(l), ref(start_flag), ref(results[i]));
+      thds.push_back(move(t));
+    }
+    start_flag.store(true);
+    for (auto &t : thds)
+      t.join();
+    assert(l.empty());
+    vector<int> ll_elems;
+    for (auto &r : results)
+      ll_elems.insert(ll_elems.end(), r.begin(), r.end());
+    sort(ll_elems.begin(), ll_elems.end());
+    assert(ll_elems == range(0, NElems));
   }
 }
 
