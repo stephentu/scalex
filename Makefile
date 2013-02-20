@@ -4,6 +4,7 @@ LDFLAGS := -lpthread -lrt
 
 HEADERS = macros.hpp \
 	  spinlock.hpp \
+	  rcu.hpp \
 	  util.hpp \
 	  linked_list.hpp \
 	  global_lock_impl.hpp \
@@ -11,7 +12,7 @@ HEADERS = macros.hpp \
 	  lock_free_impl.hpp \
 	  atomic_reference.hpp
 
-SRCFILES =
+SRCFILES = rcu.cpp
 OBJFILES = $(SRCFILES:.cpp=.o)
 
 all: test

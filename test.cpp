@@ -6,6 +6,7 @@
 #include "per_node_lock_impl.hpp"
 #include "lock_free_impl.hpp"
 
+#include "rcu.hpp"
 #include "atomic_reference.hpp"
 
 using namespace std;
@@ -48,7 +49,8 @@ main(int argc, char **argv)
   typedef
     //linked_list<int, global_lock_impl<int>>
     //linked_list<int, per_node_lock_impl<int>>
-    linked_list<int, lock_free_impl<int>>
+    //linked_list<int, lock_free_impl<int>>
+    linked_list<int, lock_free_impl<int, nop_ref_counted, scoped_rcu_region>>
     gl_linked_list;
 
   gl_linked_list l;

@@ -4,22 +4,32 @@
 #include <memory>
 
 #include "atomic_reference.hpp"
+#include "macros.hpp"
+
+namespace private_ {
+struct nop_scoper {
+  template <typename T>
+  inline void release(T *) const {}
+};
+}
 
 /**
- * Lock-free singly-linked list implemention, with standard reference counting
- * used for garbage collection.
+ * Lock-free singly-linked list implemention, with configurable ref counting
+ * and garbage collection policies
  *
  * References returned by this implementation are guaranteed to be valid until
  * the element is removed from the list
  */
-template <typename T>
+template <typename T,
+          typename RefCountImpl = atomic_ref_counted,
+          typename ScopedImpl = private_::nop_scoper>
 class lock_free_impl {
 private:
 
   struct node;
   typedef atomic_ref_ptr<node> node_ptr;
 
-  struct node : public atomic_ref_counted {
+  struct node : public RefCountImpl {
     // non-copyable
     node(const node &) = delete;
     node(node &&) = delete;
@@ -28,6 +38,12 @@ private:
     node() : value_(), next_() {}
     node(const T &value, const node_ptr &next)
       : value_(value), next_(next) {}
+
+    ~node()
+    {
+      // sanity check
+      assert(next_.get_mark());
+    }
 
     T value_;
     node_ptr next_;
@@ -42,9 +58,9 @@ private:
   node_ptr head_; // head_ points to a sentinel beginning node
 
   struct iterator_ {
-    iterator_() : node_() {}
+    iterator_() : node_(), scoper_() {}
     iterator_(const node_ptr &node)
-      : node_(node) {}
+      : node_(node), scoper_() {}
 
     T &
     operator*() const
@@ -90,6 +106,7 @@ private:
     }
 
     node_ptr node_;
+    ScopedImpl scoper_;
   };
 
 public:
@@ -101,6 +118,7 @@ public:
   size_t
   size() const
   {
+    ScopedImpl scoper UNUSED;
     assert(!head_->is_marked());
     size_t ret = 0;
     node_ptr cur = head_->next_;
@@ -116,6 +134,7 @@ public:
   front()
   {
   retry:
+    ScopedImpl scoper UNUSED;
     assert(!head_->is_marked());
     node_ptr p = head_->next_;
     assert(p);
@@ -132,6 +151,7 @@ public:
   front() const
   {
   retry:
+    ScopedImpl scoper UNUSED;
     assert(!head_->is_marked());
     node_ptr p = head_->next_;
     assert(p);
@@ -148,6 +168,7 @@ public:
   pop_front()
   {
   retry:
+    ScopedImpl scoper;
     assert(!head_->is_marked());
     node_ptr &prev = head_;
     node_ptr cur = prev->next_;
@@ -161,12 +182,14 @@ public:
     // sentinel node will never be deleted (that is, the first node of a list
     // will ALWAYS be the first node until it is deleted)
     prev->next_ = cur->next_; // semantics of assign() do not copy marked bits
+    scoper.release(cur.get());
   }
 
   void
   push_back(const T &val)
   {
   retry:
+    ScopedImpl scoper UNUSED;
     assert(!head_->is_marked());
     node_ptr p = head_->next_, *pp = &head_->next_;
     for (; p; pp = &p->next_, p = p->next_)
@@ -180,13 +203,17 @@ public:
   inline void
   remove(const T &val)
   {
+    ScopedImpl scoper;
     node_ptr p = head_->next_, *pp = &head_->next_;
     while (p) {
       if (p->value_ == val) {
         // mark removed
         if (p->next_.mark()) {
           // try to unlink- ignore success value
-          pp->compare_exchange_strong(p, p->next_);
+          if (pp->compare_exchange_strong(p, p->next_)) {
+            // successful unlink, report
+            scoper.release(p.get());
+          }
         }
         // in any case, advance the current ptr, but keep the
         // prev ptr the same
@@ -201,6 +228,7 @@ public:
   iterator
   begin()
   {
+    ScopedImpl scoper UNUSED;
     return iterator_(head_->next_);
   }
 
