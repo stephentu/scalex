@@ -283,5 +283,18 @@ private:
   }
 
   std::atomic<opaque_t> ptr_;
-  mutable spinlock mutex_; // guards Ptr(ptr_) from changing (marks can change w/o grabing mutex)
+
+  // this spinlock guards Ptr(ptr_) from changing (marks can change w/o grabing
+  // mutex)
+  //
+  // Why do we need a mutex for ref counting? This is because we assume
+  // that the source of a copy assignment (ie v in p = v) is un-stable,
+  // that is, it can experience concurrent modification during the assignment.
+  // Note that without this assumption, this pointer is of limited use.
+  //
+  // Given this assumption, each assignment has a potental race condition!
+  // That is, it is not possible to do a load() from the source followed by
+  // an increment of the reference count *atomically* w/o a lock. Thus, we
+  // need a lock to allow us to atomically load and increment.
+  mutable spinlock mutex_;
 };
