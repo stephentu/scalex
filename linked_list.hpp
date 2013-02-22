@@ -48,6 +48,18 @@ public:
     return impl_.front();
   }
 
+  inline reference
+  back()
+  {
+    return impl_.back();
+  }
+
+  inline const_reference
+  back() const
+  {
+    return impl_.back();
+  }
+
   inline void
   pop_front()
   {

@@ -88,15 +88,26 @@ single_threaded_tests()
   typedef linked_list<int, Impl> llist;
 
   llist l;
+  assert(l.empty());
+
   l.push_back(1);
   assert(l.front() == 1);
+  assert(l.back() == 1);
+  assert(l.size() == 1);
+  AssertEqual(l.begin(), l.end(), {1});
+
   l.push_back(2);
   assert(l.front() == 1);
-
+  assert(l.back() == 2);
+  assert(l.size() == 2);
   AssertEqual(l.begin(), l.end(), {1, 2});
 
   l.pop_front();
   assert(l.front() == 2);
+  assert(l.back() == 2);
+  assert(l.size() == 1);
+  AssertEqual(l.begin(), l.end(), {2});
+
   l.pop_front();
   assert(l.empty());
 
@@ -106,17 +117,26 @@ single_threaded_tests()
   l.push_back(30);
   l.push_back(50);
   l.push_back(10);
+  assert(l.front() == 10);
+  assert(l.back() == 10);
+  assert(l.size() == 6);
   AssertEqual(l.begin(), l.end(), {10, 10, 20, 30, 50, 10});
 
   l.remove(10);
   for (typename llist::iterator it = l.begin(); it != l.end(); ++it) {
     assert(*it != 10);
   }
+  assert(l.front() == 20);
+  assert(l.back() == 50);
+  assert(l.size() == 3);
   AssertEqual(l.begin(), l.end(), {20, 30, 50});
 
   auto ret = l.try_pop_front();
   assert(ret.first);
   assert(ret.second == 20);
+  assert(l.front() == 30);
+  assert(l.back() == 50);
+  assert(l.size() == 2);
 }
 
 // there's probably a better way to do this

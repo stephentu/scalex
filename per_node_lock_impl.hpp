@@ -47,12 +47,20 @@ private:
     node(const T &value, const node_ptr &next)
       : value_(value), next_(next) {}
 
+    // Note: mutex_ must be held in order to access next_
     mutable lock_type mutex_;
     T value_;
     node_ptr next_;
   };
 
+  // NB: multiple threads mutating the same shared_ptr instance
+  // is subject to data races- however, since head_ is not mutated
+  // (only read) by multiple threads, we can access it w/o a lock
   node_ptr head_; // head_ points to a sentinel beginning node
+
+  // we do, however, need a mutex to guard the tail_ shared_ptr instance
+  lock_type tail_ptr_mutex_;
+  node_ptr tail_;
 
   struct iterator_ : public std::iterator<std::forward_iterator_tag, T> {
     iterator_() : lock_(), node_() {}
@@ -113,16 +121,27 @@ public:
 
   typedef iterator_ iterator;
 
-  per_node_lock_impl() : head_(new node) {}
+  per_node_lock_impl() : head_(new node), tail_(head_) {}
 
   size_t
   size() const
   {
     size_t ret = 0;
-    head_->mutex_.lock();
     node_ptr prev = head_;
+    head_->mutex_.lock();
     node_ptr cur = head_->next_;
     while (cur) {
+      // NB: hand-over-hand locking ensures that cur doesn't become a deleted
+      // object (otherwise, if we released prev's lock before acquiring cur's
+      // lock, cur could be deleted by another thread).
+      //
+      // This, however, isn't necessarily a bad thing: by creating a node_ptr
+      // pointing to cur, we do ensure that cur won't be deleted, even if we
+      // were to release the lock on prev. Seeing as how size() is not a
+      // linearizable operation regardless of whether or not we do
+      // hand-over-hand locking (it's really only an approximating if there are
+      // concurrent mutations), then it might be OK to include deleted elements
+      // in the size count.
       cur->mutex_.lock();
       prev->mutex_.unlock();
       ret++;
@@ -136,11 +155,11 @@ public:
   inline T &
   front()
   {
-    head_->mutex_.lock();
+    // NB: holding onto head_->mutex_ is enough to ensure that first is not
+    // deleted concurrently (the ref-count is also enough)
+    unique_lock l(head_->mutex_);
     node_ptr first = head_->next_;
     assert(first);
-    unique_lock l(first->mutex_);
-    head_->mutex_.unlock();
     return first->value_;
 
   }
@@ -148,12 +167,22 @@ public:
   inline const T &
   front() const
   {
-    head_->mutex_.lock();
-    node_ptr first = head_->next_;
-    assert(first);
-    unique_lock l(first->mutex_);
-    head_->mutex_.unlock();
-    return first->value_;
+    return const_cast<per_node_lock_impl *>(this)->front();
+  }
+
+  inline T &
+  back()
+  {
+    unique_lock l(tail_ptr_mutex_); // guards tail from being removed
+    assert(head_ != tail_);
+    assert(!tail_->next_);
+    return tail_->value_;
+  }
+
+  inline const T &
+  back() const
+  {
+    return const_cast<per_node_lock_impl *>(this)->back();
   }
 
   void
@@ -163,23 +192,27 @@ public:
     node_ptr first = head_->next_;
     assert(first);
     unique_lock l0(first->mutex_);
+    bool is_tail = !first->next_;
+    if (is_tail) {
+      tail_ptr_mutex_.lock();
+      assert(tail_ == first);
+    }
     head_->next_ = first->next_;
+    if (is_tail) {
+      tail_ = head_;
+      tail_ptr_mutex_.unlock();
+    }
   }
 
   void
   push_back(const T &val)
   {
-    node_ptr prev = head_;
-    prev->mutex_.lock();
-    node_ptr cur = prev->next_;
-    while (cur) {
-      cur->mutex_.lock();
-      prev->mutex_.unlock();
-      prev = cur;
-      cur = cur->next_;
-    }
-    prev->next_ = node_ptr(new node(val, nullptr));
-    prev->mutex_.unlock();
+    node_ptr n(new node(val, nullptr));
+    unique_lock l(tail_ptr_mutex_);
+    unique_lock l1(tail_->mutex_);
+    assert(!tail_->next_);
+    tail_->next_ = n;
+    tail_ = n;
   }
 
   inline void
@@ -192,7 +225,16 @@ public:
       cur->mutex_.lock();
       if (cur->value_ == val) {
         // unlink
+        bool is_tail = !cur->next_;
+        if (is_tail) {
+          tail_ptr_mutex_.lock();
+          assert(tail_ == cur);
+        }
         prev->next_ = cur->next_;
+        if (is_tail) {
+          tail_ = prev;
+          tail_ptr_mutex_.unlock();
+        }
         cur->mutex_.unlock();
         cur = prev->next_;
       } else {
@@ -213,7 +255,16 @@ public:
       return std::make_pair(false, T());
     unique_lock l0(first->mutex_);
     T t = first->value_;
+    bool is_tail = !first->next_;
+    if (is_tail) {
+      tail_ptr_mutex_.lock();
+      assert(tail_ == first);
+    }
     head_->next_ = first->next_;
+    if (is_tail) {
+      tail_ = head_;
+      tail_ptr_mutex_.unlock();
+    }
     return std::make_pair(true, t);
   }
 

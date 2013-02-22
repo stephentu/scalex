@@ -1,4 +1,4 @@
-CXX := g++-4.7
+-include config.mk
 CXXFLAGS := -Wall -Werror -g --std=c++0x
 LDFLAGS := -lpthread -lrt
 

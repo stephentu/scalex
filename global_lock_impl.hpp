@@ -37,6 +37,7 @@ private:
 
   mutable std::mutex mutex_;
   node_ptr head_;
+  node_ptr tail_;
 
   struct iterator_ : public std::iterator<std::forward_iterator_tag, T> {
     iterator_() : lock_(), node_() {}
@@ -90,7 +91,7 @@ public:
 
   typedef iterator_ iterator;
 
-  global_lock_impl() : mutex_(), head_() {}
+  global_lock_impl() : mutex_(), head_(), tail_() {}
 
   size_t
   size() const
@@ -116,9 +117,22 @@ public:
   inline const T &
   front() const
   {
+    return const_cast<global_lock_impl *>(this)->front();
+  }
+
+  inline T &
+  back()
+  {
     unique_lock l(mutex_);
-    assert(head_);
-    return head_->value_;
+    assert(tail_);
+    assert(!tail_->next_);
+    return tail_->value_;
+  }
+
+  inline const T &
+  back() const
+  {
+    return const_cast<global_lock_impl *>(this)->back();
   }
 
   void
@@ -128,30 +142,40 @@ public:
     assert(head_);
     node_ptr next = head_->next_;
     head_ = next;
+    if (!head_)
+      tail_.reset();
   }
 
   void
   push_back(const T &val)
   {
     unique_lock l(mutex_);
-    node_ptr p = head_, *pp = &head_;
-    for (; p; pp = &p->next_, p = p->next_)
-      ;
     node_ptr n(new node(val, nullptr));
-    *pp = n;
+    if (!tail_) {
+      assert(!head_);
+      head_ = tail_ = n;
+    } else {
+      tail_->next_ = n;
+      tail_ = n;
+    }
   }
 
   inline void
   remove(const T &val)
   {
     unique_lock l(mutex_);
+    node_ptr prev;
     node_ptr p = head_, *pp = &head_;
     while (p) {
       if (p->value_ == val) {
         // unlink
         *pp = p->next_;
         p = *pp;
+        if (!*pp)
+          // removed last value
+          tail_ = prev;
       } else {
+        prev = p;
         pp = &p->next_;
         p = p->next_;
       }
@@ -162,11 +186,15 @@ public:
   try_pop_front()
   {
     unique_lock l(mutex_);
-    if (!head_)
+    if (!head_) {
+      assert(!tail_);
       return std::make_pair(false, T());
+    }
     T t = head_->value_;
     node_ptr next = head_->next_;
     head_ = next;
+    if (!head_)
+      tail_.reset();
     return std::make_pair(true, t);
   }
 

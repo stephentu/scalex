@@ -57,6 +57,7 @@ private:
   };
 
   node_ptr head_; // head_ points to a sentinel beginning node
+  mutable node_ptr tail_; // tail_ is maintained loosely
 
   struct iterator_ : public std::iterator<std::forward_iterator_tag, T> {
     iterator_() : node_(), scoper_() {}
@@ -116,7 +117,7 @@ public:
 
   typedef iterator_ iterator;
 
-  lock_free_impl() : head_(new node) {}
+  lock_free_impl() : head_(new node), tail_(head_) {}
   ~lock_free_impl()
   {
     ScopedImpl scoper;
@@ -138,14 +139,19 @@ public:
     size_t ret = 0;
     node_ptr cur = head_->next_;
     while (cur) {
-      if (!cur->is_marked());
+      if (!cur->is_marked()) {
         ret++;
+      } else {
+        // XXX: reap cur for garbage collection
+      }
+      if (!cur->next_ && !cur->is_marked() && tail_ != cur)
+        tail_ = cur;
       cur = cur->next_;
     }
     return ret;
   }
 
-  inline T &
+  T &
   front()
   {
   retry:
@@ -154,29 +160,56 @@ public:
     node_ptr p = head_->next_;
     assert(p);
     if (p->is_marked())
+      // XXX: reap p for garbage collection
       goto retry;
     T &ref = p->value_;
     if (p->is_marked())
+      // XXX: reap p for garbage collection
       goto retry;
     // we have stability on a reference
+    if (!p->next_ && tail_ != p)
+      tail_ = p;
     return ref;
   }
 
   inline const T &
   front() const
   {
+    return const_cast<lock_free_impl *>(this)->front();
+  }
+
+  T &
+  back()
+  {
   retry:
     ScopedImpl scoper UNUSED;
     assert(!head_->is_marked());
-    node_ptr p = head_->next_;
-    assert(p);
-    if (p->is_marked())
+    node_ptr tail = tail_;
+    while (tail->next_) {
+      tail = tail->next_;
+      if (!tail)
+        goto retry;
+    }
+    if (tail->is_marked()) { // hopefully rare
+      // XXX: reap p for garbage collection
+      fix_tail_pointer_from_head();
       goto retry;
-    T &ref = p->value_;
-    if (p->is_marked())
+    }
+    tail_ = tail;
+    T &ref = tail->value_;
+    if (tail->is_marked()) { // see above
+      // XXX: reap p for garbage collection
+      fix_tail_pointer_from_head();
       goto retry;
+    }
     // we have stability on a reference
     return ref;
+  }
+
+  inline const T &
+  back() const
+  {
+    return const_cast<lock_free_impl *>(this)->back();
   }
 
   void
@@ -185,8 +218,7 @@ public:
   retry:
     ScopedImpl scoper;
     assert(!head_->is_marked());
-    node_ptr &prev = head_;
-    node_ptr cur = prev->next_;
+    node_ptr cur = head_->next_;
     assert(cur);
 
     if (!cur->next_.mark())
@@ -195,8 +227,10 @@ public:
 
     // we don't need to CAS the prev ptr here, because we know that the
     // sentinel node will never be deleted (that is, the first node of a list
-    // will ALWAYS be the first node until it is deleted)
-    prev->next_ = cur->next_; // semantics of assign() do not copy marked bits
+    // will *always* be the first node)
+    head_->next_ = cur->next_; // semantics of assign() do not copy marked bits
+    if (!cur->next_ && tail_ != head_)
+      tail_ = head_;
     assert(cur->is_marked());
     scoper.release(cur.get());
   }
@@ -207,23 +241,31 @@ public:
   retry:
     ScopedImpl scoper;
     assert(!head_->is_marked());
-    node_ptr p = head_->next_, *pp = &head_->next_;
-    for (; p; pp = &p->next_, p = p->next_)
-      ;
+    node_ptr tail = tail_;
+    while (tail->next_) {
+      tail = tail->next_;
+      if (!tail)
+        goto retry;
+    }
+    if (tail->is_marked()) { // hopefully rare
+      fix_tail_pointer_from_head();
+      goto retry;
+    }
     node_ptr n(new node(val, node_ptr()));
-    assert(!p.get_mark()); // b/c node ptrs don't propagate mark bits
-    if (!pp->compare_exchange_strong(p, n)) {
+    if (!tail->next_.compare_exchange_strong(node_ptr(), n)) {
       bool ret = n->next_.mark(); // be pedantic
       if (!ret) assert(false);
       scoper.release(n.get());
       goto retry;
     }
+    tail_ = n;
   }
 
   inline void
   remove(const T &val)
   {
     ScopedImpl scoper;
+    node_ptr prev = head_;
     node_ptr p = head_->next_, *pp = &head_->next_;
     while (p) {
       if (p->value_ == val) {
@@ -235,11 +277,14 @@ public:
             assert(p->is_marked());
             scoper.release(p.get());
           }
+          if (!p->next_)
+            tail_ = prev;
         }
         // in any case, advance the current ptr, but keep the
         // prev ptr the same
         p = p->next_;
       } else {
+        prev = p;
         pp = &p->next_;
         p = p->next_;
       }
@@ -252,18 +297,20 @@ public:
   retry:
     ScopedImpl scoper;
     assert(!head_->is_marked());
-    node_ptr &prev = head_;
-    node_ptr cur = prev->next_;
+    node_ptr cur = head_->next_;
+
     if (!cur)
       return std::make_pair(false, T());
+
 
     if (!cur->next_.mark())
       // was concurrently deleted
       goto retry;
 
-    // we are the deleter
     T t = cur->value_;
-    prev->next_ = cur->next_;
+    head_->next_ = cur->next_; // semantics of assign() do not copy marked bits
+    if (!cur->next_ && tail_ != head_)
+      tail_ = head_;
     assert(cur->is_marked());
     scoper.release(cur.get());
     return std::make_pair(true, t);
@@ -280,6 +327,17 @@ public:
   end()
   {
     return iterator_(node_ptr());
+  }
+
+private:
+  // relatively expensive, should be avoided
+  void
+  fix_tail_pointer_from_head() const
+  {
+    node_ptr p = head_->next_, *pp = &head_->next_;
+    for (; p; pp = &p->next_, p = p->next_)
+      ;
+    tail_ = *pp;
   }
 };
 
