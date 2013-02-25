@@ -1,5 +1,5 @@
 -include config.mk
-CXXFLAGS := -Wall -Werror -g --std=c++0x
+CXXFLAGS := -Wall -Werror -g -O2 --std=c++0x
 LDFLAGS := -lpthread -lrt
 
 # 0 = libc malloc

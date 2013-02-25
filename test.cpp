@@ -153,7 +153,7 @@ range(int range_begin, int range_end)
 
 template <typename Impl>
 static void
-ilist_insert(linked_list<int, Impl> &l, atomic<bool> &f, int range_begin, int range_end)
+llist_insert(linked_list<int, Impl> &l, atomic<bool> &f, int range_begin, int range_end)
 {
   while (!f.load())
     nop_pause();
@@ -163,16 +163,37 @@ ilist_insert(linked_list<int, Impl> &l, atomic<bool> &f, int range_begin, int ra
 
 template <typename Impl>
 static void
-ilist_pop_front(linked_list<int, Impl> &l, atomic<bool> &f, vector<int> &popped)
+llist_pop_front(linked_list<int, Impl> &l, atomic<bool> &f, atomic<bool> &can_stop, vector<int> &popped)
 {
   while (!f.load())
     nop_pause();
   for (;;) {
     auto ret = l.try_pop_front();
-    if (!ret.first)
+    if (!ret.first && can_stop.load())
       break;
-    popped.push_back(ret.second);
+    if (ret.first)
+      popped.push_back(ret.second);
   }
+}
+
+template <typename Impl>
+static void
+llist_remove(linked_list<int, Impl> &l, atomic<bool> &f, int range_begin, int range_end)
+{
+  while (!f.load())
+    nop_pause();
+  for (int i = range_begin; i < range_end; i++)
+    l.remove(i);
+}
+
+template <typename Impl>
+static void
+llist_push_back(linked_list<int, Impl> &l, atomic<bool> &f, int range_begin, int range_end)
+{
+  while (!f.load())
+    nop_pause();
+  for (int i = range_begin; i < range_end; i++)
+    l.push_back(i);
 }
 
 template <typename Impl>
@@ -182,15 +203,15 @@ multi_threaded_tests()
   typedef linked_list<int, Impl> llist;
 
   // try a bunch of concurrent inserts, make sure we don't lose
-  // any values!
+  // any values
   {
     llist l;
-    const int NElemsPerThread = 500;
+    const int NElemsPerThread = 2000;
     const int NThreads = 4;
     vector<thread> thds;
     atomic<bool> start_flag(false);
     for (int i = 0; i < NThreads; i++) {
-      thread t(ilist_insert<Impl>, ref(l), ref(start_flag), i * NElemsPerThread, (i + 1) * NElemsPerThread);
+      thread t(llist_insert<Impl>, ref(l), ref(start_flag), i * NElemsPerThread, (i + 1) * NElemsPerThread);
       thds.push_back(move(t));
     }
     start_flag.store(true);
@@ -204,7 +225,7 @@ multi_threaded_tests()
   // try a bunch of concurrent try_pop_fronts, make sure we see every element
   {
     llist l;
-    const int NElems = 500;
+    const int NElems = 2000;
     const int NThreads = 4;
     for (auto e : range(0, NElems))
       l.push_back(e);
@@ -212,8 +233,9 @@ multi_threaded_tests()
     vector<vector<int>> results;
     results.resize(NThreads);
     atomic<bool> start_flag(false);
+    atomic<bool> can_stop(true);
     for (int i = 0; i < NThreads; i++) {
-      thread t(ilist_pop_front<Impl>, ref(l), ref(start_flag), ref(results[i]));
+      thread t(llist_pop_front<Impl>, ref(l), ref(start_flag), ref(can_stop), ref(results[i]));
       thds.push_back(move(t));
     }
     start_flag.store(true);
@@ -225,6 +247,72 @@ multi_threaded_tests()
       ll_elems.insert(ll_elems.end(), r.begin(), r.end());
     sort(ll_elems.begin(), ll_elems.end());
     assert(ll_elems == range(0, NElems));
+  }
+
+  // try a bunch of concurrent removes (w/ no inserts). make sure we remove all
+  // the elements
+  {
+    llist l;
+    const int NElemsPerThread = 2000;
+    const int NThreads = 4;
+    for (auto e : range(0, NThreads * NElemsPerThread))
+      l.push_back(e);
+    assert(l.size() == (NThreads * NElemsPerThread));
+    vector<thread> thds;
+    atomic<bool> start_flag(false);
+    for (int i = 0; i < NThreads; i++) {
+      thread t(llist_remove<Impl>, ref(l), ref(start_flag), i * NElemsPerThread, (i + 1) * NElemsPerThread);
+      thds.push_back(move(t));
+    }
+    start_flag.store(true);
+    for (auto &t : thds)
+      t.join();
+    assert(l.empty());
+  }
+
+  // try non conflicting remove/push_backs, make sure we don't lose any of the
+  // push_backs
+  {
+    llist l;
+    const int NElemsPerThread = 2000;
+    const int NRemoveThreads = 4;
+    const int NPushBackThreads = 4;
+    const int Base = NRemoveThreads * NElemsPerThread;
+    for (auto e : range(0, Base))
+      l.push_back(e);
+    assert(l.size() == (size_t) Base);
+    vector<thread> thds;
+    atomic<bool> start_flag(false);
+    for (int i = 0; i < NRemoveThreads; i++) {
+      thread t(llist_remove<Impl>, ref(l), ref(start_flag), i * NElemsPerThread, (i + 1) * NElemsPerThread);
+      thds.push_back(move(t));
+    }
+    for (int i = 0; i < NPushBackThreads; i++) {
+      thread t(llist_push_back<Impl>, ref(l), ref(start_flag),
+          Base + i * NElemsPerThread, Base + (i + 1) * NElemsPerThread);
+      thds.push_back(move(t));
+    }
+    start_flag.store(true);
+    for (auto &t : thds)
+      t.join();
+    vector<int> ll_elems(l.begin(), l.end());
+    sort(ll_elems.begin(), ll_elems.end());
+    assert(ll_elems == range(Base, Base + (NPushBackThreads * NElemsPerThread)));
+  }
+
+  // try as a producer/consumer queue
+  {
+    llist l;
+    atomic<bool> start_flag(false);
+    thread pusher(llist_push_back<Impl>, ref(l), ref(start_flag), 0, 10000);
+    vector<int> popped;
+    atomic<bool> can_stop(false);
+    thread popper(llist_pop_front<Impl>, ref(l), ref(start_flag), ref(can_stop), ref(popped));
+    start_flag.store(true);
+    pusher.join();
+    can_stop.store(true);
+    popper.join();
+    assert(popped == range(0, 10000));
   }
 }
 

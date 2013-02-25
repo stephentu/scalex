@@ -185,6 +185,7 @@ public:
     ScopedImpl scoper UNUSED;
     assert(!head_->is_marked());
     node_ptr tail = tail_;
+    assert(tail);
     while (tail->next_) {
       tail = tail->next_;
       if (!tail)
@@ -242,6 +243,7 @@ public:
     ScopedImpl scoper;
     assert(!head_->is_marked());
     node_ptr tail = tail_;
+    assert(tail);
     while (tail->next_) {
       tail = tail->next_;
       if (!tail)
@@ -302,7 +304,6 @@ public:
     if (!cur)
       return std::make_pair(false, T());
 
-
     if (!cur->next_.mark())
       // was concurrently deleted
       goto retry;
@@ -334,10 +335,14 @@ private:
   void
   fix_tail_pointer_from_head() const
   {
-    node_ptr p = head_->next_, *pp = &head_->next_;
-    for (; p; pp = &p->next_, p = p->next_)
-      ;
-    tail_ = *pp;
+    node_ptr cur = head_->next_;
+    node_ptr prev = head_;
+    while (cur) {
+      prev = cur;
+      cur = cur->next_;
+    }
+    assert(prev);
+    tail_ = prev;
   }
 };
 
