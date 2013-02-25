@@ -2,9 +2,11 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <set>
 #include <memory>
 
 #include <unistd.h> // for sleep()
+#include <getopt.h>
 
 #include "policy.hpp"
 #include "asm.hpp"
@@ -13,21 +15,27 @@
 
 using namespace std;
 
-// some global variables
-static size_t g_nthreads = 0;
-static uint64_t g_duration_sec = 0;
+// some global variables - set defaults here
+static int g_verbose = false;
+static size_t g_nthreads = 1;
+static uint64_t g_duration_sec = 10;
 
-//static void
-//_die(const char *filename,
-//     const char *func,
-//     int line,
-//     const string &msg) __attribute__((noreturn))
-//{
-//  cerr << filename << ":" << line << ": " << func << " - panic: " << msg << endl;
-//  abort();
-//}
-//
-//#define die(x) _die(__FILE__, __func__, __LINE__, x)
+static void
+_die(const char *filename,
+     const char *func,
+     int line,
+     const string &msg) __attribute__((noreturn));
+static void
+_die(const char *filename,
+     const char *func,
+     int line,
+     const string &msg)
+{
+  cerr << filename << ":" << line << ": " << func << " - panic: " << msg << endl;
+  abort();
+}
+
+#define die(x) _die(__FILE__, __func__, __LINE__, x)
 
 class worker {
   friend class benchmark;
@@ -76,8 +84,12 @@ public:
       t.join();
     const uint64_t elasped_usec = t.lap();
     const double elasped_sec = double(elasped_usec) / 1000000.0;
-    for (auto &w : workers)
+    size_t agg_ops = 0;
+    for (auto &w : workers) {
       cout << w->name << " : " << double(w->nops)/elasped_sec << " ops/sec" << endl;
+      agg_ops += w->nops;
+    }
+    cout << "total : " << double(agg_ops)/elasped_sec << " ops/sec" << endl;
   }
 
 protected:
@@ -92,18 +104,21 @@ class read_only_benchmark : public benchmark {
 
   class ro_worker : public worker {
   public:
-    ro_worker(llist *list) : worker("reader"), list(list) {}
+    ro_worker(llist *list) : worker("reader"), list(list), nelems_seen(0) {}
+    inline size_t get_nelems_seen() const { return nelems_seen; }
   protected:
     void
     run(const atomic<bool> &stop_flag) override
     {
       while (!stop_flag.load()) {
         vector<int> l(list->begin(), list->end());
+        nelems_seen += l.size(); // so GCC doesn't optimize the vector away
         nops++;
       }
     }
   private:
     llist *list;
+    size_t nelems_seen;
   };
 
 public:
@@ -136,11 +151,90 @@ main(int argc, char **argv)
   cerr << "Warning: benchmarks being run w/ assertions" << endl;
 #endif
 
-  g_nthreads = 2;
-  g_duration_sec = 5;
+  string bench_type = "readonly";
+  string policy_type = "global_lock";
+  for (;;) {
+    static struct option long_options[] =
+    {
+      {"verbose",      no_argument,       &g_verbose, 1 },
+      {"bench",        required_argument, 0,         'b'},
+      {"policy",       required_argument, 0,         'p'},
+      {"num-threads",  required_argument, 0,         't'},
+      {"runtime",      required_argument, 0,         'r'},
+      {0, 0, 0, 0}
+    };
+    int option_index = 0;
+    int c = getopt_long(argc, argv, "vb:t:r:", long_options, &option_index);
+    if (c == -1)
+      break;
 
-  unique_ptr<benchmark> p(new read_only_benchmark<typename ll_policy<int>::global_lock>);
+    switch (c) {
+    case 0:
+      if (long_options[option_index].flag != 0)
+        break;
+      abort();
+      break;
+
+    case 'b':
+      bench_type = optarg;
+      break;
+
+    case 'p':
+      policy_type = optarg;
+      break;
+
+    case 't':
+      g_nthreads = strtoul(optarg, NULL, 10);
+      if (g_nthreads <= 0)
+        die("need --num-threads > 0");
+      break;
+
+    case 'r':
+      g_duration_sec = strtoul(optarg, NULL, 10);
+      if (g_duration_sec <= 0)
+        die("need --runtime > 0");
+      break;
+
+    case '?':
+      /* getopt_long already printed an error message. */
+      break;
+
+    default:
+      abort();
+    }
+  }
+
+  const set<string> valid_bench_types =
+    {"readonly"};
+  const set<string> valid_policy_types =
+    {"global_lock", "per_node_lock", "lock_free", "lock_free_rcu"};
+
+  if (!valid_bench_types.count(bench_type))
+    die("invalid --bench");
+
+  if (!valid_policy_types.count(policy_type))
+    die("invalid --policy");
+
+  unique_ptr<benchmark> p;
+  if (bench_type == "readonly") {
+    if (policy_type == "global_lock")
+      p.reset(new read_only_benchmark<typename ll_policy<int>::global_lock>);
+    else if (policy_type == "per_node_lock")
+      p.reset(new read_only_benchmark<typename ll_policy<int>::per_node_lock>);
+    else if (policy_type == "lock_free")
+      p.reset(new read_only_benchmark<typename ll_policy<int>::lock_free>);
+    else if (policy_type == "lock_free_rcu")
+      p.reset(new read_only_benchmark<typename ll_policy<int>::lock_free_rcu>);
+  }
+
+  if (g_verbose) {
+    cout << "bench configuration:" << endl
+         << "  bench      : " << bench_type << endl
+         << "  policy     : " << policy_type << endl
+         << "  num-threads: " << g_nthreads << endl
+         << "  runtime    : " << g_duration_sec << " sec" << endl;
+  }
+
   p->do_bench();
-
   return 0;
 }

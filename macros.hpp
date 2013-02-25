@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+
 // These macros assume GCC
 
 #define likely(x)   __builtin_expect(!!(x), 1)
@@ -12,3 +14,9 @@
 #define PACKED __attribute__((packed))
 
 #define UNUSED __attribute__((unused))
+
+#ifdef NDEBUG
+  #define ASSERT(expr) (likely(e) ? (void)0 : abort())
+#else
+  #define ASSERT(expr) assert(expr)
+#endif /* NDEBUG */
