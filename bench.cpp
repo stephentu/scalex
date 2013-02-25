@@ -86,10 +86,15 @@ public:
     const double elasped_sec = double(elasped_usec) / 1000000.0;
     size_t agg_ops = 0;
     for (auto &w : workers) {
-      cout << w->name << " : " << double(w->nops)/elasped_sec << " ops/sec" << endl;
+      if (g_verbose)
+        cout << w->name << " : " << double(w->nops)/elasped_sec << " ops/sec" << endl;
       agg_ops += w->nops;
     }
-    cout << "total : " << double(agg_ops)/elasped_sec << " ops/sec" << endl;
+    if (g_verbose)
+      cout << "total : " << double(agg_ops)/elasped_sec << " ops/sec" << endl;
+    else
+      // output for runner.py
+      cout << double(agg_ops)/elasped_sec << endl;
   }
 
 protected:
