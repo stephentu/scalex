@@ -121,8 +121,6 @@ class read_only_benchmark : public benchmark {
     size_t nelems_seen;
   };
 
-public:
-
 protected:
   void
   init() override
@@ -137,6 +135,70 @@ protected:
     vector<unique_ptr<worker>> ret;
     for (size_t i = 0; i < g_nthreads; i++)
       ret.emplace_back(new ro_worker(&list));
+    return move(ret);
+  }
+
+private:
+  llist list;
+};
+
+template <typename Impl>
+class queue_benchmark : public benchmark {
+  typedef linked_list<int, Impl> llist;
+  static const size_t NElemsInitial = 10000;
+
+  class producer : public worker {
+  public:
+    producer(llist *list) : worker("producer"), list(list) {}
+  protected:
+    void
+    run(const atomic<bool> &stop_flag) override
+    {
+      while (!stop_flag.load()) {
+        list->push_back(1);
+        nops++;
+      }
+    }
+  private:
+    llist *list;
+  };
+
+  class consumer : public worker {
+  public:
+    consumer(llist *list) : worker("consumer"), list(list), nelems_popped(0) {}
+    inline size_t get_nelems_popped() const { return nelems_popped; }
+  protected:
+    void
+    run(const atomic<bool> &stop_flag) override
+    {
+      while (!stop_flag.load()) {
+        auto ret = list->try_pop_front();
+        if (ret.first)
+          nelems_popped++;
+        nops++; // count regardless of removal or not
+      }
+    }
+  private:
+    llist *list;
+    size_t nelems_popped;
+  };
+
+protected:
+  void
+  init() override
+  {
+    for (size_t i = 0; i < NElemsInitial; i++)
+      list.push_back(i);
+  }
+
+  vector<unique_ptr<worker>>
+  make_workers() override
+  {
+    vector<unique_ptr<worker>> ret;
+    for (size_t i = 0; i < g_nthreads / 2; i++)
+      ret.emplace_back(new producer(&list));
+    for (size_t i = g_nthreads / 2; i < g_nthreads; i++)
+      ret.emplace_back(new consumer(&list));
     return move(ret);
   }
 
@@ -205,7 +267,7 @@ main(int argc, char **argv)
   }
 
   const set<string> valid_bench_types =
-    {"readonly"};
+    {"readonly", "queue"};
   const set<string> valid_policy_types =
     {"global_lock", "per_node_lock", "lock_free", "lock_free_rcu"};
 
@@ -216,6 +278,9 @@ main(int argc, char **argv)
     die("invalid --policy");
 
   unique_ptr<benchmark> p;
+
+  // XXX(stephentu): there must be a better way to do this, but leave it for
+  // now
   if (bench_type == "readonly") {
     if (policy_type == "global_lock")
       p.reset(new read_only_benchmark<typename ll_policy<int>::global_lock>);
@@ -225,6 +290,15 @@ main(int argc, char **argv)
       p.reset(new read_only_benchmark<typename ll_policy<int>::lock_free>);
     else if (policy_type == "lock_free_rcu")
       p.reset(new read_only_benchmark<typename ll_policy<int>::lock_free_rcu>);
+  } else if (bench_type == "queue") {
+    if (policy_type == "global_lock")
+      p.reset(new queue_benchmark<typename ll_policy<int>::global_lock>);
+    else if (policy_type == "per_node_lock")
+      p.reset(new queue_benchmark<typename ll_policy<int>::per_node_lock>);
+    else if (policy_type == "lock_free")
+      p.reset(new queue_benchmark<typename ll_policy<int>::lock_free>);
+    else if (policy_type == "lock_free_rcu")
+      p.reset(new queue_benchmark<typename ll_policy<int>::lock_free_rcu>);
   }
 
   if (g_verbose) {
