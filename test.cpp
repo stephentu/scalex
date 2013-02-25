@@ -3,12 +3,9 @@
 #include <initializer_list>
 #include <vector>
 #include <algorithm>
+#include <thread>
 
-#include "linked_list.hpp"
-#include "global_lock_impl.hpp"
-#include "per_node_lock_impl.hpp"
-#include "lock_free_impl.hpp"
-
+#include "policy.hpp"
 #include "asm.hpp"
 #include "rcu.hpp"
 #include "atomic_reference.hpp"
@@ -323,14 +320,6 @@ ExecTest(Function &&f, const string &name)
   f();
   cout << "Test " << name << " passed" << endl;
 }
-
-template <typename T>
-struct ll_policy {
-  typedef global_lock_impl<T> global_lock;
-  typedef per_node_lock_impl<T> per_node_lock;
-  typedef lock_free_impl<T> lock_free;
-  typedef lock_free_impl<T, nop_ref_counted, scoped_rcu_region> lock_free_rcu;
-};
 
 int
 main(int argc, char **argv)

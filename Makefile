@@ -5,7 +5,7 @@ LDFLAGS := -lpthread -lrt
 # 0 = libc malloc
 # 1 = jemalloc
 # 2 = tcmalloc
-USE_MALLOC_MODE=2
+USE_MALLOC_MODE=1
 
 ifeq ($(USE_MALLOC_MODE),1)
         CXXFLAGS+=-DUSE_JEMALLOC
@@ -22,6 +22,7 @@ HEADERS = macros.hpp \
 	  rcu.hpp \
 	  util.hpp \
 	  timer.hpp \
+	  policy.hpp \
 	  linked_list.hpp \
 	  global_lock_impl.hpp \
 	  per_node_lock_impl.hpp \
@@ -39,6 +40,9 @@ all: test
 test: test.o $(OBJFILES)
 	$(CXX) -o test $^ $(LDFLAGS)
 
+bench: bench.o $(OBJFILES)
+	$(CXX) -o bench $^ $(LDFLAGS)
+
 .PHONY: clean
 clean:
-	rm -f test *.o
+	rm -f test bench *.o
