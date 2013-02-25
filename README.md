@@ -18,9 +18,11 @@ library dependencies. Simply run:
 Running
 -------
 For test suite
+
     ./test
 
 For benchmark
+
     ./bench [--verbose] \
       --bench (readonly|queue) \
       --policy (global_lock|per_node_lock|lock_free|lock_free_rcu) \
