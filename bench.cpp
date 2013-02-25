@@ -113,7 +113,7 @@ class read_only_benchmark : public benchmark {
     inline size_t get_nelems_seen() const { return nelems_seen; }
   protected:
     void
-    run(const atomic<bool> &stop_flag) override
+    run(const atomic<bool> &stop_flag) OVERRIDE
     {
       while (!stop_flag.load()) {
         vector<int> l(list->begin(), list->end());
@@ -128,14 +128,14 @@ class read_only_benchmark : public benchmark {
 
 protected:
   void
-  init() override
+  init() OVERRIDE
   {
     for (size_t i = 0; i < NElems; i++)
       list.push_back(i);
   }
 
   vector<unique_ptr<worker>>
-  make_workers() override
+  make_workers() OVERRIDE
   {
     vector<unique_ptr<worker>> ret;
     for (size_t i = 0; i < g_nthreads; i++)
@@ -157,7 +157,7 @@ class queue_benchmark : public benchmark {
     producer(llist *list) : worker("producer"), list(list) {}
   protected:
     void
-    run(const atomic<bool> &stop_flag) override
+    run(const atomic<bool> &stop_flag) OVERRIDE
     {
       while (!stop_flag.load()) {
         list->push_back(1);
@@ -174,7 +174,7 @@ class queue_benchmark : public benchmark {
     inline size_t get_nelems_popped() const { return nelems_popped; }
   protected:
     void
-    run(const atomic<bool> &stop_flag) override
+    run(const atomic<bool> &stop_flag) OVERRIDE
     {
       while (!stop_flag.load()) {
         auto ret = list->try_pop_front();
@@ -190,14 +190,14 @@ class queue_benchmark : public benchmark {
 
 protected:
   void
-  init() override
+  init() OVERRIDE
   {
     for (size_t i = 0; i < NElemsInitial; i++)
       list.push_back(i);
   }
 
   vector<unique_ptr<worker>>
-  make_workers() override
+  make_workers() OVERRIDE
   {
     vector<unique_ptr<worker>> ret;
     for (size_t i = 0; i < g_nthreads / 2; i++)

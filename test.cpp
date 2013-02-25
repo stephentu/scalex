@@ -8,6 +8,7 @@
 #include "policy.hpp"
 #include "asm.hpp"
 #include "rcu.hpp"
+#include "macros.hpp"
 #include "atomic_reference.hpp"
 
 using namespace std;
@@ -28,34 +29,34 @@ atomic_ref_ptr_tests()
   deleted = false;
   {
     atomic_ref_ptr<foo> p(new foo);
-    assert(!p.get_mark());
+    ASSERT(!p.get_mark());
   }
-  assert(deleted);
+  ASSERT(deleted);
   deleted = false;
 
   {
     atomic_ref_ptr<foo> p(new foo);
-    assert(!p.get_mark());
-    assert(p.mark());
+    ASSERT(!p.get_mark());
+    ASSERT(p.mark());
   }
-  assert(deleted);
+  ASSERT(deleted);
   deleted = false;
 
   {
     atomic_ref_ptr<foo> p(new foo);
     p = atomic_ref_ptr<foo>();
   }
-  assert(deleted);
+  ASSERT(deleted);
   deleted = false;
 
   {
     atomic_ref_ptr<foo> p0(new foo);
     atomic_ref_ptr<foo> p1(new foo);
     p0 = p1;
-    assert(deleted);
+    ASSERT(deleted);
     deleted = false;
   }
-  assert(deleted);
+  ASSERT(deleted);
   deleted = false;
 }
 
@@ -64,11 +65,11 @@ static void
 AssertEqualRanges(IterA begin_a, IterA end_a, IterB begin_b, IterB end_b)
 {
   while (begin_a != end_a && begin_b != end_b) {
-    assert(*begin_a == *begin_b);
+    ASSERT(*begin_a == *begin_b);
     ++begin_a; ++begin_b;
   }
-  assert(begin_a == end_a);
-  assert(begin_b == end_b);
+  ASSERT(begin_a == end_a);
+  ASSERT(begin_b == end_b);
 }
 
 template <typename Iter>
@@ -85,28 +86,28 @@ single_threaded_tests()
   typedef linked_list<int, Impl> llist;
 
   llist l;
-  assert(l.empty());
+  ASSERT(l.empty());
 
   l.push_back(1);
-  assert(l.front() == 1);
-  assert(l.back() == 1);
-  assert(l.size() == 1);
+  ASSERT(l.front() == 1);
+  ASSERT(l.back() == 1);
+  ASSERT(l.size() == 1);
   AssertEqual(l.begin(), l.end(), {1});
 
   l.push_back(2);
-  assert(l.front() == 1);
-  assert(l.back() == 2);
-  assert(l.size() == 2);
+  ASSERT(l.front() == 1);
+  ASSERT(l.back() == 2);
+  ASSERT(l.size() == 2);
   AssertEqual(l.begin(), l.end(), {1, 2});
 
   l.pop_front();
-  assert(l.front() == 2);
-  assert(l.back() == 2);
-  assert(l.size() == 1);
+  ASSERT(l.front() == 2);
+  ASSERT(l.back() == 2);
+  ASSERT(l.size() == 1);
   AssertEqual(l.begin(), l.end(), {2});
 
   l.pop_front();
-  assert(l.empty());
+  ASSERT(l.empty());
 
   l.push_back(10);
   l.push_back(10);
@@ -114,33 +115,33 @@ single_threaded_tests()
   l.push_back(30);
   l.push_back(50);
   l.push_back(10);
-  assert(l.front() == 10);
-  assert(l.back() == 10);
-  assert(l.size() == 6);
+  ASSERT(l.front() == 10);
+  ASSERT(l.back() == 10);
+  ASSERT(l.size() == 6);
   AssertEqual(l.begin(), l.end(), {10, 10, 20, 30, 50, 10});
 
   l.remove(10);
   for (typename llist::iterator it = l.begin(); it != l.end(); ++it) {
-    assert(*it != 10);
+    ASSERT(*it != 10);
   }
-  assert(l.front() == 20);
-  assert(l.back() == 50);
-  assert(l.size() == 3);
+  ASSERT(l.front() == 20);
+  ASSERT(l.back() == 50);
+  ASSERT(l.size() == 3);
   AssertEqual(l.begin(), l.end(), {20, 30, 50});
 
   auto ret = l.try_pop_front();
-  assert(ret.first);
-  assert(ret.second == 20);
-  assert(l.front() == 30);
-  assert(l.back() == 50);
-  assert(l.size() == 2);
+  ASSERT(ret.first);
+  ASSERT(ret.second == 20);
+  ASSERT(l.front() == 30);
+  ASSERT(l.back() == 50);
+  ASSERT(l.size() == 2);
 }
 
 // there's probably a better way to do this
 static vector<int>
 range(int range_begin, int range_end)
 {
-  assert(range_end >= range_begin); // cant handle this for now
+  ASSERT(range_end >= range_begin); // cant handle this for now
   vector<int> r;
   r.reserve(range_end - range_begin);
   for (int i = range_begin; i < range_end; i++)
@@ -216,7 +217,7 @@ multi_threaded_tests()
       t.join();
     vector<int> ll_elems(l.begin(), l.end());
     sort(ll_elems.begin(), ll_elems.end());
-    assert(ll_elems == range(0, NThreads * NElemsPerThread));
+    ASSERT(ll_elems == range(0, NThreads * NElemsPerThread));
   }
 
   // try a bunch of concurrent try_pop_fronts, make sure we see every element
@@ -238,12 +239,12 @@ multi_threaded_tests()
     start_flag.store(true);
     for (auto &t : thds)
       t.join();
-    assert(l.empty());
+    ASSERT(l.empty());
     vector<int> ll_elems;
     for (auto &r : results)
       ll_elems.insert(ll_elems.end(), r.begin(), r.end());
     sort(ll_elems.begin(), ll_elems.end());
-    assert(ll_elems == range(0, NElems));
+    ASSERT(ll_elems == range(0, NElems));
   }
 
   // try a bunch of concurrent removes (w/ no inserts). make sure we remove all
@@ -254,7 +255,7 @@ multi_threaded_tests()
     const int NThreads = 4;
     for (auto e : range(0, NThreads * NElemsPerThread))
       l.push_back(e);
-    assert(l.size() == (NThreads * NElemsPerThread));
+    ASSERT(l.size() == (NThreads * NElemsPerThread));
     vector<thread> thds;
     atomic<bool> start_flag(false);
     for (int i = 0; i < NThreads; i++) {
@@ -264,7 +265,7 @@ multi_threaded_tests()
     start_flag.store(true);
     for (auto &t : thds)
       t.join();
-    assert(l.empty());
+    ASSERT(l.empty());
   }
 
   // try non conflicting remove/push_backs, make sure we don't lose any of the
@@ -277,7 +278,7 @@ multi_threaded_tests()
     const int Base = NRemoveThreads * NElemsPerThread;
     for (auto e : range(0, Base))
       l.push_back(e);
-    assert(l.size() == (size_t) Base);
+    ASSERT(l.size() == (size_t) Base);
     vector<thread> thds;
     atomic<bool> start_flag(false);
     for (int i = 0; i < NRemoveThreads; i++) {
@@ -294,7 +295,7 @@ multi_threaded_tests()
       t.join();
     vector<int> ll_elems(l.begin(), l.end());
     sort(ll_elems.begin(), ll_elems.end());
-    assert(ll_elems == range(Base, Base + (NPushBackThreads * NElemsPerThread)));
+    ASSERT(ll_elems == range(Base, Base + (NPushBackThreads * NElemsPerThread)));
   }
 
   // try as a producer/consumer queue
@@ -309,7 +310,7 @@ multi_threaded_tests()
     pusher.join();
     can_stop.store(true);
     popper.join();
-    assert(popped == range(0, 10000));
+    ASSERT(popped == range(0, 10000));
   }
 }
 
