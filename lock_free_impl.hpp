@@ -22,13 +22,14 @@ struct nop_scoper {
  * the element is removed from the list
  */
 template <typename T,
+          typename RefPtrLockImpl = spinlock,
           typename RefCountImpl = atomic_ref_counted,
           typename ScopedImpl = private_::nop_scoper>
 class lock_free_impl {
 private:
 
   struct node;
-  typedef atomic_ref_ptr<node> node_ptr;
+  typedef atomic_ref_ptr<node, RefPtrLockImpl> node_ptr;
 
   struct node : public RefCountImpl {
     // non-copyable

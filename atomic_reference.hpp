@@ -90,13 +90,22 @@ struct ptr_ops_mixin {
 
 }
 
+class nop_lock {
+public:
+  inline void lock() {}
+  inline void unlock() {}
+  inline bool try_lock() { return true; }
+};
+
 // T must inherit atomic_ref_counted (or implement the same interface)
 // this class also supports one-time marking of ptrs.
 //
 // Doesn't support custom deleter
-template <typename T>
+template <typename T, typename LockImpl = spinlock>
 class atomic_ref_ptr : public private_::ptr_ops_mixin<T> {
   typedef typename private_::ptr_ops_mixin<T>::opaque_t opaque_t;
+  typedef LockImpl lock_type;
+  typedef std::lock_guard<lock_type> lock_guard;
 
 public:
   // nullptr constructor
@@ -136,9 +145,9 @@ public:
     assignFrom(other);
   }
 
-  template <typename U>
-  atomic_ref_ptr(const atomic_ref_ptr<U> &other)
-    : ptr_(opaque_t(other.get())), mutex_()
+  template <typename U, typename V>
+  atomic_ref_ptr(const atomic_ref_ptr<U, V> &other)
+    : ptr_(opaque_t(nullptr)), mutex_()
   {
     assignFrom(other);
   }
@@ -150,9 +159,9 @@ public:
     return *this;
   }
 
-  template <typename U>
+  template <typename U, typename V>
   atomic_ref_ptr &
-  operator=(const atomic_ref_ptr<U> &other)
+  operator=(const atomic_ref_ptr<U, V> &other)
   {
     assignFrom(other);
     return *this;
@@ -176,16 +185,16 @@ public:
     return get();
   }
 
-  template <typename U>
+  template <typename U, typename V>
   inline bool
-  operator==(const atomic_ref_ptr<U> &other) const
+  operator==(const atomic_ref_ptr<U, V> &other) const
   {
     return get() == other.get();
   }
 
-  template <typename U>
+  template <typename U, typename V>
   inline bool
-  operator!=(const atomic_ref_ptr<U> &other) const
+  operator!=(const atomic_ref_ptr<U, V> &other) const
   {
     return !operator==(other);
   }
@@ -228,8 +237,8 @@ public:
       atomic_ref_ptr desired_value)
   {
     std::lock(mutex_, expected_value.mutex_);
-    std::lock_guard<spinlock> l0(mutex_, std::adopt_lock);
-    std::lock_guard<spinlock> l1(expected_value.mutex_, std::adopt_lock);
+    lock_guard l0(mutex_, std::adopt_lock);
+    lock_guard l1(expected_value.mutex_, std::adopt_lock);
     opaque_t expected_opaque = expected_value.ptr_.load(); // assume stable
     opaque_t desired_opaque = desired_value.ptr_.load();
     if (!ptr_.compare_exchange_strong(expected_opaque, desired_opaque))
@@ -248,14 +257,14 @@ public:
 
 private:
 
-  template <typename U>
+  template <typename U, typename V>
   void
-  assignFrom(const atomic_ref_ptr<U> &other)
+  assignFrom(const atomic_ref_ptr<U, V> &other)
   {
   retry:
     std::lock(mutex_, other.mutex_);
-    std::lock_guard<spinlock> l0(mutex_, std::adopt_lock);
-    std::lock_guard<spinlock> l1(other.mutex_, std::adopt_lock);
+    lock_guard l0(mutex_, std::adopt_lock);
+    typename atomic_ref_ptr<U, V>::lock_guard l1(other.mutex_, std::adopt_lock);
 
     opaque_t this_opaque = get_raw();
     T *this_ptr = this->Ptr(this_opaque);
@@ -296,5 +305,5 @@ private:
   // That is, it is not possible to do a load() from the source followed by
   // an increment of the reference count *atomically* w/o a lock. Thus, we
   // need a lock to allow us to atomically load and increment.
-  mutable spinlock mutex_;
+  mutable lock_type mutex_;
 };
