@@ -192,6 +192,7 @@ public:
   void
   pop_front()
   {
+  retry:
     unique_lock l(head_->mutex_);
     node_ptr first = head_->next_;
     assert(first);
@@ -201,6 +202,11 @@ public:
       l0.unlock();
       tail_ptr_mutex_.lock();
       l0.lock();
+      if (first->next_)  {
+        // no longer tail, retry
+        tail_ptr_mutex_.unlock();
+        goto retry;
+      }
       assert(tail_ == first);
     }
     head_->next_ = first->next_;
@@ -257,6 +263,7 @@ public:
   std::pair<bool, T>
   try_pop_front()
   {
+  retry:
     unique_lock l(head_->mutex_);
     node_ptr first = head_->next_;
     if (unlikely(!first))
@@ -268,6 +275,11 @@ public:
       l0.unlock();
       tail_ptr_mutex_.lock();
       l0.lock();
+      if (first->next_)  {
+        // no longer tail, retry
+        tail_ptr_mutex_.unlock();
+        goto retry;
+      }
       assert(tail_ == first);
     }
     head_->next_ = first->next_;
