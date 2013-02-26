@@ -116,8 +116,9 @@ class read_only_benchmark : public benchmark {
     run(const atomic<bool> &stop_flag) OVERRIDE
     {
       while (!stop_flag.load()) {
-        vector<int> l(list->begin(), list->end());
-        nelems_seen += l.size(); // so GCC doesn't optimize the vector away
+        //vector<int> l(list->begin(), list->end());
+        //nelems_seen += l.size(); // so GCC doesn't optimize the vector away
+        nelems_seen += list->size();
         nops++;
       }
     }
