@@ -302,7 +302,7 @@ public:
     assert(!head_->is_marked());
     node_ptr cur = head_->next_;
 
-    if (!cur)
+    if (unlikely(!cur))
       return std::make_pair(false, T());
 
     if (!cur->next_.mark())

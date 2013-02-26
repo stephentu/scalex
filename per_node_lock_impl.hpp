@@ -13,6 +13,8 @@
 #include <mutex>
 #endif
 
+#include "macros.hpp"
+
 /**
  * Standard singly-linked list with a per-node locks for protection, and
  * standard reference counting. Hand over hand locking is used to
@@ -196,7 +198,9 @@ public:
     unique_lock l0(first->mutex_);
     bool is_tail = !first->next_;
     if (is_tail) {
+      l0.unlock();
       tail_ptr_mutex_.lock();
+      l0.lock();
       assert(tail_ == first);
     }
     head_->next_ = first->next_;
@@ -229,7 +233,9 @@ public:
         // unlink
         bool is_tail = !cur->next_;
         if (is_tail) {
+          cur->mutex_.unlock();
           tail_ptr_mutex_.lock();
+          cur->mutex_.lock();
           assert(tail_ == cur);
         }
         prev->next_ = cur->next_;
@@ -253,13 +259,15 @@ public:
   {
     unique_lock l(head_->mutex_);
     node_ptr first = head_->next_;
-    if (!first)
+    if (unlikely(!first))
       return std::make_pair(false, T());
     unique_lock l0(first->mutex_);
     T t = first->value_;
     bool is_tail = !first->next_;
     if (is_tail) {
+      l0.unlock();
       tail_ptr_mutex_.lock();
+      l0.lock();
       assert(tail_ == first);
     }
     head_->next_ = first->next_;

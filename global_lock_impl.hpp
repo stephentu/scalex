@@ -5,6 +5,8 @@
 #include <mutex>
 #include <iterator>
 
+#include "macros.hpp"
+
 /**
  * Standard singly-linked list with a global lock for protection, and
  * standard reference counting
@@ -188,7 +190,7 @@ public:
   try_pop_front()
   {
     unique_lock l(mutex_);
-    if (!head_) {
+    if (unlikely(!head_)) {
       assert(!tail_);
       return std::make_pair(false, T());
     }
