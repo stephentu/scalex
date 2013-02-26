@@ -43,6 +43,8 @@ private:
     iterator_() : lock_(), node_() {}
     iterator_(const unique_lock_ptr &lock, const node_ptr &node)
       : lock_(lock), node_(node) {}
+    iterator_(unique_lock_ptr &&lock, const node_ptr &node)
+      : lock_(std::move(lock)), node_(node) {}
 
     T &
     operator*() const
@@ -150,7 +152,7 @@ public:
   push_back(const T &val)
   {
     unique_lock l(mutex_);
-    node_ptr n(new node(val, nullptr));
+    node_ptr n(std::make_shared<node>(val, nullptr));
     if (!tail_) {
       assert(!head_);
       head_ = tail_ = n;
@@ -201,8 +203,7 @@ public:
   iterator
   begin()
   {
-    unique_lock_ptr l(new unique_lock(mutex_));
-    return iterator_(l, head_);
+    return iterator_(std::move(std::make_shared<unique_lock>(mutex_)), head_);
   }
 
   iterator
