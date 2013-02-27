@@ -90,6 +90,16 @@ public:
     return impl_.end();
   }
 
+  inline void
+  clear()
+  {
+    for (;;) {
+      auto ret = try_pop_front();
+      if (!ret.second)
+        break;
+    }
+  }
+
   // begin non-standard API
 
   std::pair<bool, T>

@@ -95,10 +95,12 @@ public:
     else
       // output for runner.py
       cout << double(agg_ops)/elasped_sec << endl;
+    cleanup();
   }
 
 protected:
   virtual void init() = 0;
+  virtual void cleanup() = 0;
   virtual vector<unique_ptr<worker>> make_workers() = 0;
 };
 
@@ -135,6 +137,12 @@ protected:
       list.push_back(i);
   }
 
+  void
+  cleanup() OVERRIDE
+  {
+    list.clear();
+  }
+
   vector<unique_ptr<worker>>
   make_workers() OVERRIDE
   {
@@ -151,7 +159,7 @@ private:
 template <typename Impl>
 class queue_benchmark : public benchmark {
   typedef linked_list<int, Impl> llist;
-  static const size_t NElemsInitial = 10000;
+  static const size_t NElemsInitial = 100000;
 
   class producer : public worker {
   public:
@@ -195,6 +203,12 @@ protected:
   {
     for (size_t i = 0; i < NElemsInitial; i++)
       list.push_back(i);
+  }
+
+  void
+  cleanup() OVERRIDE
+  {
+    list.clear();
   }
 
   vector<unique_ptr<worker>>

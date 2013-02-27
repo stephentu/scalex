@@ -202,6 +202,7 @@ public:
       l0.unlock();
       tail_ptr_mutex_.lock();
       l0.lock();
+      assert(head_->next_ == first);
       if (first->next_)  {
         // no longer tail, retry
         tail_ptr_mutex_.unlock();
@@ -275,6 +276,7 @@ public:
       l0.unlock();
       tail_ptr_mutex_.lock();
       l0.lock();
+      assert(head_->next_ == first);
       if (first->next_)  {
         // no longer tail, retry
         tail_ptr_mutex_.unlock();
